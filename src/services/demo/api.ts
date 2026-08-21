@@ -13,7 +13,7 @@ import { DEMO_SYMBOLS } from "./instruments.ts";
 
 const DEMO_USER = {
   id: "demo-user",
-  email: "demo@opencharts.dev",
+  email: "demo@trading-miniapp.dev",
   firstName: "Demo",
   lastName: "Trader",
   roles: ["trader"],

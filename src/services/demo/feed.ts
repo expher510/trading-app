@@ -1,35 +1,64 @@
 import { publish } from "./bus.ts";
-import { getTickPrices } from "./candles.ts";
+import { getSeedPrice } from "./candles.ts";
 import { mark } from "./engine.ts";
 import { DEMO_SYMBOLS } from "./instruments.ts";
 
 /**
- * Demo market-data feed. Replays the bundled REAL 1m closes for every symbol
- * as a forward-moving tick stream at the current wall-clock time, so the chart
- * and watchlist look live while every price is genuine market data. Drives the
- * paper-trading engine's mark-to-market via engine.mark().
+ * Live market-data feed simulator.
+ *
+ * Generates continuous, smooth real-time ticks starting from the real market price,
+ * ensuring zero abrupt jumps, realistic micro-volatility, and smooth chart rendering.
  */
 
 const TICK_MS = 600;
 
-type SymbolCursor = { symbol: string; prices: number[]; index: number; spread: number };
+type SymbolCursor = {
+  symbol: string;
+  basePrice: number;
+  currentPrice: number;
+  spread: number;
+  tickSize: number;
+  volatility: number;
+};
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let cursors: SymbolCursor[] = [];
 
+function getSymbolVolatility(symbol: string, basePrice: number): number {
+  if (symbol.startsWith("BTC")) return 1.5; // BTC: ~$1-2 per tick
+  if (symbol.startsWith("ETH")) return 0.15; // ETH: ~$0.1-0.2
+  if (symbol.startsWith("SOL")) return 0.03; // SOL: ~$0.03
+  if (symbol.startsWith("XAU")) return 0.15; // Gold: ~$0.15
+  if (symbol.includes("JPY")) return 0.005; // USDJPY: ~0.005
+  // EURUSD, GBPUSD: ~0.00003 (0.3 pip)
+  return Math.max(0.00003, basePrice * 0.00003);
+}
+
 function buildCursors(): SymbolCursor[] {
   return DEMO_SYMBOLS.map((s) => {
-    const prices = getTickPrices(s.name);
-    const seed = prices[prices.length - 1] ?? 0;
-    return { symbol: s.name, prices, index: 0, spread: Math.max(s.tickSize, seed * 0.0001) };
+    const seed = getSeedPrice(s.name) || 100;
+    const spread = Math.max(s.tickSize, seed * 0.0001);
+    const volatility = getSymbolVolatility(s.name, seed);
+    return {
+      symbol: s.name,
+      basePrice: seed,
+      currentPrice: seed,
+      spread,
+      tickSize: s.tickSize,
+      volatility,
+    };
   });
 }
 
 function emitTick(cursor: SymbolCursor): void {
-  if (cursor.prices.length === 0) return;
-  const price = cursor.prices[cursor.index]!;
-  cursor.index = (cursor.index + 1) % cursor.prices.length;
+  // Smooth random walk with gentle mean-reversion towards basePrice
+  const drift = (cursor.basePrice - cursor.currentPrice) * 0.02;
+  const shock = (Math.random() - 0.499) * cursor.volatility;
+  cursor.currentPrice += drift + shock;
+
+  const price = cursor.currentPrice;
   const half = cursor.spread / 2;
+
   publish("market-data", {
     eventType: "MarketTick",
     symbol: cursor.symbol,
@@ -37,13 +66,14 @@ function emitTick(cursor: SymbolCursor): void {
     ask: price + half,
     occurredAt: Date.now(),
   });
+
   mark(cursor.symbol, price);
 }
 
 export function startDemoFeed(): void {
   if (timer) return;
   cursors = buildCursors();
-  // Seed an initial price for every symbol so panels render immediately.
+  // Seed initial price for every symbol immediately
   for (const c of cursors) emitTick(c);
   timer = setInterval(() => {
     for (const c of cursors) emitTick(c);

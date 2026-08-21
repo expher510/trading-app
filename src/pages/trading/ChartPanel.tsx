@@ -421,9 +421,6 @@ function buildTickBar(
     };
   }
   if ((bucketTime as number) <= (prev.time as number)) return null;
-  if ((bucketTime as number) - (prev.time as number) > intervalSecOf(ctx.timeframe) * 1.5) {
-    requestGapRefetch(ctx.gapAt, ctx.qc, ctx.symbol, ctx.timeframe);
-  }
   const seedOpen = prev.close;
   return {
     time: bucketTime,

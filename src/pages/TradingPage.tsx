@@ -2,6 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsFeedConnected } from "../components/ConnectionIndicator.tsx";
 import { MobileAccountBar, MobileTradingPanel } from "../components/MobileTradingPanel.tsx";
+import { DepositModal } from "../components/DepositModal.tsx";
+import { UserProfileModal } from "../components/UserProfileModal.tsx";
+import { useAuthStore as useAppAuth } from "../services/auth.ts";
 import {
   OrderConfirmDialog,
   OrderModifyDialog,
@@ -207,6 +210,10 @@ export function TradingPage() {
       return v;
     });
   }, []);
+
+  // Deposit Modal State
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const { isProfileModalOpen, setIsProfileModalOpen } = useAppAuth();
 
   // (#6) Position modify dialog
   const [modifyingPosition, setModifyingPosition] = useState<Position | null>(null);
@@ -454,6 +461,7 @@ export function TradingPage() {
         onToggleStayInDrawingMode={() =>
           updateChartPreferences({ stayInDrawingMode: !chartPrefs.stayInDrawingMode })
         }
+        onOpenDeposit={() => setIsDepositOpen(true)}
       />
 
       <MarketClosedBanner symbolInfo={symbolInfo} />
@@ -698,6 +706,12 @@ export function TradingPage() {
         tick={tick}
         symbolInfo={symbolInfo}
         loading={confirmLoading}
+      />
+      <DepositModal isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onOpenDeposit={() => setIsDepositOpen(true)}
       />
     </div>
   );

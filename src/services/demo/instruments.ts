@@ -24,7 +24,34 @@ function crypto(name: string, displayName: string, tickSize: number): Symbol {
   };
 }
 
+function forex(name: string, displayName: string, tickSize: number, contractSize = 100000): Symbol {
+  return {
+    id: name,
+    name,
+    displayName,
+    category: "FOREX",
+    contractSize,
+    tickSize,
+    tickValue: tickSize * contractSize,
+    marginPercent: 1,
+    maxLeverage: 100,
+    commission: 7,
+    swapLong: -2.5,
+    swapShort: 0.5,
+    tradingHoursStart: null,
+    tradingHoursEnd: null,
+    isActive: true,
+  };
+}
+
 export const DEMO_SYMBOLS: Symbol[] = [
+  // Forex & Gold
+  forex("EURUSD", "EUR/USD", 0.00001),
+  forex("GBPUSD", "GBP/USD", 0.00001),
+  forex("USDJPY", "USD/JPY", 0.001),
+  forex("XAUUSD", "Gold / USD", 0.01, 100),
+
+  // Crypto
   crypto("BTCUSD", "Bitcoin", 0.01),
   crypto("ETHUSD", "Ethereum", 0.01),
   crypto("SOLUSD", "Solana", 0.01),

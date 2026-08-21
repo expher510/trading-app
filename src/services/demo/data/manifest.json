@@ -5,7 +5,11 @@
     "SOLUSD",
     "BNBUSD",
     "XRPUSD",
-    "ADAUSD"
+    "ADAUSD",
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY",
+    "XAUUSD"
   ],
   "timeframes": [
     "1m",
@@ -17,5 +21,5 @@
     "1d",
     "1w"
   ],
-  "generatedAt": "2026-06-13T07:41:36.274Z"
+  "generatedAt": "2026-08-20T22:55:27.764Z"
 }

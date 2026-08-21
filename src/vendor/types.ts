@@ -1,10 +1,8 @@
 /**
  * Locally vendored type definitions.
  *
- * These were previously imported from the upstream "@propsim/types" workspace
- * package. OpenCharts is standalone, so the handful of types actually used by
- * the terminal are inlined here and the "@propsim/types" import specifier is
- * aliased to this file (see vite.config.ts / tsconfig.json).
+ * Trading MiniApp is standalone, so the type definitions used by
+ * the terminal are inlined here.
  */
 
 /** One calendar day's trading summary for a single account. */

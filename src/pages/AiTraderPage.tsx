@@ -1,5 +1,5 @@
 /**
- * AI trader was a PropSim-specific feature and is not part of OpenCharts.
+ * AI trader feature is not enabled for Trading MiniApp.
  * The panel is gated off (api.isAiTraderEnabled resolves false), so these stubs
  * exist only to satisfy the import in TradingPage and never render.
  */

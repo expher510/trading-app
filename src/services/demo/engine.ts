@@ -3,37 +3,51 @@ import { publish } from "./bus.ts";
 import { getDemoSymbol } from "./instruments.ts";
 
 /**
- * In-browser paper-trading engine. The single source of truth for the demo
- * account, positions and orders. Market orders fill instantly at the latest
- * replayed price; positions are marked-to-market on every tick. State is
- * ephemeral (memory only) — a refresh starts a fresh demo session.
+ * In-browser paper-trading engine with full persistence (localStorage).
+ * State survives page refreshes, tab changes, and restarts.
  */
 
-const STARTING_BALANCE = 100_000;
+const STARTING_BALANCE = 0;
 const DEFAULT_LEVERAGE = 100;
 
+function loadState<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveState(key: string, value: any): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+const savedAccount = loadState<Partial<Account>>("trading_account_state", {});
 const account: Account = {
-  id: crypto.randomUUID(),
-  userId: "demo-user",
-  templateId: "demo",
-  label: "Demo Account",
+  id: savedAccount.id || crypto.randomUUID(),
+  userId: savedAccount.userId || "live-user",
+  templateId: "live",
+  label: "Live Trading Account",
   status: "ACTIVE",
-  balance: STARTING_BALANCE,
-  equity: STARTING_BALANCE,
-  margin: 0,
-  freeMargin: STARTING_BALANCE,
+  balance: savedAccount.balance ?? STARTING_BALANCE,
+  equity: savedAccount.equity ?? (savedAccount.balance ?? STARTING_BALANCE),
+  margin: savedAccount.margin ?? 0,
+  freeMargin: savedAccount.freeMargin ?? (savedAccount.balance ?? STARTING_BALANCE),
   phase: "LIVE",
-  startDate: new Date().toISOString(),
-  createdAt: new Date().toISOString(),
+  startDate: savedAccount.startDate || new Date().toISOString(),
+  createdAt: savedAccount.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   isHftMode: false,
-  template: { name: "Demo Account", startingBalance: STARTING_BALANCE, instrumentType: "CRYPTO" },
+  template: { name: "Live Trading Account", startingBalance: STARTING_BALANCE, instrumentType: "CRYPTO" },
 };
 
-const positions: Position[] = [];
-const orders: Order[] = [];
-const closed: ClosedPosition[] = [];
-const fills: Fill[] = [];
+const positions: Position[] = loadState<Position[]>("trading_positions_state", []);
+const orders: Order[] = loadState<Order[]>("trading_orders_state", []);
+const closed: ClosedPosition[] = loadState<ClosedPosition[]>("trading_closed_positions_state", []);
+const fills: Fill[] = loadState<Fill[]>("trading_fills_state", []);
 const lastPrice = new Map<string, number>();
 
 export function getAccount(): Account {
@@ -83,6 +97,7 @@ function recomputeEquity(): void {
   account.equity = account.balance + unrealized;
   account.freeMargin = account.equity - margin;
   account.updatedAt = new Date().toISOString();
+  saveState("trading_account_state", account);
 }
 
 function emitEquity(): void {
@@ -114,6 +129,7 @@ function openPosition(symbol: string, side: string, qty: number, price: number, 
     stopLoss: sl ?? null,
   };
   positions.push(pos);
+  saveState("trading_positions_state", positions);
   publish("positions", { eventType: "PositionOpened", accountId: account.id, positionId: pos.id, _entity: { ...pos } });
   return pos;
 }
@@ -152,11 +168,25 @@ export type PlaceOrderArgs = {
   stopLoss?: number;
 };
 
+export function setAccountBalance(newBalance: number): void {
+  account.balance = newBalance;
+  account.equity = newBalance;
+  account.freeMargin = newBalance;
+  account.margin = 0;
+  saveState("trading_account_state", account);
+  recomputeEquity();
+  emitEquity();
+}
+
 /** Market orders fill instantly at the latest price; an open position is created. */
 export function placeOrder(input: PlaceOrderArgs): Order {
+  if (account.freeMargin <= 0 || account.balance <= 0) {
+    throw new Error("رصيد الحساب غير كافٍ. يرجى إيداع رصيد (Deposit) لبدء التداول.");
+  }
   const price = input.price ?? lastPrice.get(input.symbol) ?? 0;
   const order = makeFilledOrder(input, price);
   orders.unshift(order);
+  saveState("trading_orders_state", orders);
   publish("orders", { eventType: "OrderPlaced", accountId: account.id, orderId: order.id, _entity: { ...order } });
   publish("orders", { eventType: "OrderFilled", accountId: account.id, orderId: order.id, _entity: { ...order } });
   openPosition(input.symbol, input.side, input.quantity, price, input.takeProfit, input.stopLoss);
@@ -182,6 +212,8 @@ function recordClose(pos: Position, qty: number, exitPrice: number, realized: nu
     closedAt: now,
     isPartialClose: qty < pos.quantity,
   });
+  saveState("trading_closed_positions_state", closed);
+
   fills.unshift({
     id: crypto.randomUUID(),
     orderId: pos.id,
@@ -194,6 +226,7 @@ function recordClose(pos: Position, qty: number, exitPrice: number, realized: nu
     realizedPnl: realized,
     createdAt: now,
   });
+  saveState("trading_fills_state", fills);
 }
 
 export function closePosition(positionId: string, quantity?: number): { success: boolean } {
@@ -212,6 +245,7 @@ export function closePosition(positionId: string, quantity?: number): { success:
     pos.quantity -= qty;
     publish("positions", { eventType: "PositionUpdated", accountId: account.id, positionId, quantity: pos.quantity });
   }
+  saveState("trading_positions_state", positions);
   recomputeEquity();
   emitEquity();
   return { success: true };
@@ -230,6 +264,7 @@ export function modifyPosition(
   if (!pos) return undefined;
   if (mods.takeProfit !== undefined) pos.takeProfit = mods.takeProfit;
   if (mods.stopLoss !== undefined) pos.stopLoss = mods.stopLoss;
+  saveState("trading_positions_state", positions);
   publish("positions", {
     eventType: "PositionUpdated",
     accountId: account.id,
@@ -244,6 +279,7 @@ export function modifyPosition(
 export function cancelOrder(orderId: string): { success: boolean } {
   const idx = orders.findIndex((o) => o.id === orderId);
   if (idx >= 0) orders.splice(idx, 1);
+  saveState("trading_orders_state", orders);
   publish("orders", { eventType: "OrderCanceled", accountId: account.id, orderId });
   return { success: true };
 }
@@ -276,5 +312,18 @@ export function mark(symbol: string, price: number): void {
     });
   }
   recomputeEquity();
+  
+  // ── Auto Liquidation / Stop Out Protection ──
+  if (account.equity <= 0 && positions.length > 0) {
+    for (const p of [...positions]) {
+      closePosition(p.id);
+    }
+    account.balance = Math.max(0, account.balance);
+    account.equity = account.balance;
+    account.freeMargin = account.balance;
+    account.margin = 0;
+    saveState("trading_account_state", account);
+  }
+
   emitEquity();
 }

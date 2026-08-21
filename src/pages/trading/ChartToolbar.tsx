@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Circle,
   Clock,
+  CreditCard,
   Crosshair,
   Equal,
   Info,
@@ -35,9 +36,12 @@ import {
   TrendingUp,
   Triangle,
   Type,
+  User,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useAuthStore as useAppAuth } from "../../services/auth.ts";
+import { useTradingStore } from "../../services/store.tsx";
 import { INDICATOR_REGISTRY, type IndicatorType } from "../../lib/indicators.ts";
 import { cn, formatNumber } from "../../lib/utils.ts";
 import {
@@ -105,6 +109,7 @@ export interface ChartToolbarProps {
   onCycleMagnet?: () => void;
   stayInDrawingMode?: boolean;
   onToggleStayInDrawingMode?: () => void;
+  onOpenDeposit?: () => void;
 }
 
 export function ChartToolbar({
@@ -138,7 +143,13 @@ export function ChartToolbar({
   onCycleMagnet,
   stayInDrawingMode = false,
   onToggleStayInDrawingMode,
+  onOpenDeposit,
 }: ChartToolbarProps) {
+  const { user, setIsAuthModalOpen, setIsProfileModalOpen } = useAppAuth();
+  const accounts = useTradingStore((s) => s.accounts);
+  const currentAccount = accounts[0];
+  const liveBalance = currentAccount?.balance ?? user?.balance ?? 0;
+  const liveEquity = currentAccount?.equity ?? liveBalance;
   const [showSymbolSearch, setShowSymbolSearch] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState("");
 
@@ -388,6 +399,48 @@ export function ChartToolbar({
       }
 
       <div className="flex-1 hidden md:block" />
+
+      {/* User Account / Login Button */}
+      <button
+        type="button"
+        onClick={() => (user ? setIsProfileModalOpen(true) : setIsAuthModalOpen(true))}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-secondary/80 hover:bg-secondary text-neutral-300 hover:text-white font-medium text-xs border border-border transition-all active:scale-95"
+      >
+        <User className="h-3.5 w-3.5 text-primary" />
+        {user ? (
+          <span>{user.first_name || user.username || (user.email ? user.email.split("@")[0] : "المتداول")}</span>
+        ) : (
+          <span>دخول / حساب</span>
+        )}
+      </button>
+
+      {/* Wallet Balance Badge */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-xs font-mono font-bold text-emerald-400 shadow-inner">
+        <span className="text-[10px] text-neutral-400 font-sans font-normal">الرصيد:</span>
+        <span>${formatNumber(liveBalance, 2)}</span>
+        {liveEquity !== liveBalance && (
+          <span
+            className={cn(
+              "text-[10px] font-semibold",
+              liveEquity >= liveBalance ? "text-emerald-400" : "text-rose-400",
+            )}
+          >
+            (${formatNumber(liveEquity, 2)})
+          </span>
+        )}
+      </div>
+
+      {/* Deposit Button */}
+      {onOpenDeposit && (
+        <button
+          type="button"
+          onClick={onOpenDeposit}
+          className="flex items-center gap-1.5 px-3 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-semibold text-xs border border-emerald-500/30 transition-all shadow-sm active:scale-95"
+        >
+          <CreditCard className="h-3.5 w-3.5" />
+          إيداع / Deposit
+        </button>
+      )}
 
       {/* Right Panel Toggles */}
       <div className="hidden md:flex items-center gap-0.5">
