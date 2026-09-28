@@ -46,6 +46,48 @@ interface AuthState {
   updateUserBalance: (newBalance: number) => void;
 }
 
+function extractTelegramUser(): { id: number; first_name?: string; username?: string } | null {
+  // 1. Direct WebApp initDataUnsafe
+  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
+  if (tg?.initDataUnsafe?.user?.id) {
+    return tg.initDataUnsafe.user;
+  }
+
+  // 2. Parse initData string
+  if (tg?.initData) {
+    try {
+      const params = new URLSearchParams(tg.initData);
+      const userStr = params.get("user");
+      if (userStr) {
+        const parsed = JSON.parse(userStr);
+        if (parsed?.id) return parsed;
+      }
+    } catch {}
+  }
+
+  // 3. Fallback: Check location hash / search for tgWebAppData
+  if (typeof window !== "undefined") {
+    try {
+      const hashStr = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+      const searchStr = window.location.search.startsWith("?") ? window.location.search.slice(1) : "";
+      const fullQuery = hashStr.includes("=") ? hashStr : searchStr;
+
+      const rawParams = new URLSearchParams(fullQuery);
+      const tgWebAppData = rawParams.get("tgWebAppData");
+      if (tgWebAppData) {
+        const nestedParams = new URLSearchParams(tgWebAppData);
+        const userStr = nestedParams.get("user");
+        if (userStr) {
+          const parsed = JSON.parse(userStr);
+          if (parsed?.id) return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isTelegram: false,
@@ -84,7 +126,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (tg?.ready) tg.ready();
       if (tg?.expand) tg.expand();
 
-      const tgUser = tg?.initDataUnsafe?.user;
+      const tgUser = extractTelegramUser();
       if (tgUser?.id) {
         set({ isTelegram: true });
         // Auto authenticate with backend

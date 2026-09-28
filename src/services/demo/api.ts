@@ -1,6 +1,6 @@
 import type { DrawingLine } from "../../pages/trading/constants.ts";
 import type { Candle } from "../schemas.ts";
-import { getHistory } from "./candles.ts";
+import { getHistory, getSeedPrice } from "./candles.ts";
 import * as engine from "./engine.ts";
 import { DEMO_SYMBOLS } from "./instruments.ts";
 
@@ -129,13 +129,62 @@ export const demoApi = {
 
   // ── Symbols & market data ──
   getSymbols: () => Promise.resolve(DEMO_SYMBOLS),
-  getCandles: (symbol: string, timeframe: string, limit?: number) =>
-    Promise.resolve(getHistory(symbol, timeframe, limit)),
-  getCandlesWithMeta: (symbol: string, timeframe: string, limit?: number) =>
-    Promise.resolve(candlesMeta(getHistory(symbol, timeframe, limit))),
-  getTick: (symbol: string) => {
+  getCandles: async (symbol: string, timeframe: string, limit?: number) => {
+    try {
+      const res = await fetch(`/api/market-data/candles/${symbol}?timeframe=${timeframe}&limit=${limit || 200}`);
+      if (res.ok) {
+        const json = await res.json();
+        const candles = Array.isArray(json) ? json : json.candles;
+        if (candles && candles.length > 0) return candles;
+      }
+    } catch {
+      // fallback to pre-bundled history
+    }
+    return getHistory(symbol, timeframe, limit);
+  },
+  getCandlesWithMeta: async (symbol: string, timeframe: string, limit?: number) => {
+    try {
+      const res = await fetch(`/api/market-data/candles/${symbol}?timeframe=${timeframe}&limit=${limit || 200}`);
+      if (res.ok) {
+        const json = await res.json();
+        const candles = Array.isArray(json) ? json : json.candles;
+        if (candles && candles.length > 0) {
+          return {
+            candles,
+            metadata: json.metadata || {
+              isPartial: false,
+              backfillQueued: false,
+              historicalCoverageStart: candles[0]?.time ?? null,
+            },
+          };
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return candlesMeta(getHistory(symbol, timeframe, limit));
+  },
+  getTick: async (symbol: string) => {
+    try {
+      const res = await fetch(`/api/market-data/ticks/${symbol}`);
+      if (res.ok) {
+        const t = await res.json();
+        if (t && t.bid > 0) {
+          return { symbol, bid: t.bid, ask: t.ask, timestamp: t.timestamp || Date.now() };
+        }
+      }
+    } catch {
+      // fallback
+    }
     const price = engine.getLastPrice(symbol);
-    return Promise.resolve({ symbol, bid: price, ask: price, timestamp: Date.now() });
+    if (price > 0 && Number.isFinite(price)) {
+      return { symbol, bid: price, ask: price, timestamp: Date.now() };
+    }
+    const seed = getSeedPrice(symbol);
+    if (seed > 0 && Number.isFinite(seed)) {
+      return { symbol, bid: seed, ask: seed, timestamp: Date.now() };
+    }
+    return null;
   },
   getMarketDataHealth: () => Promise.resolve({ status: "ok" }),
   getEconomicCalendar: () => Promise.resolve([]),

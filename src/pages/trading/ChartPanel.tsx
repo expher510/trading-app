@@ -40,6 +40,7 @@ import { TooltipPrimitive } from "../../lib/chart-plugins/tooltip/tooltip.ts";
 import type { IndicatorType } from "../../lib/indicators.ts";
 import { cn } from "../../lib/utils.ts";
 import { api } from "../../services/api.ts";
+import { uuid } from "../../lib/uuid.ts";
 import { queryKeys } from "../../services/queries.ts";
 import type { Candle, Order, Position, Symbol } from "../../services/schemas.ts";
 import { toast } from "../../services/toast.ts";
@@ -382,6 +383,25 @@ function paintServerVolume(live: LiveCandleData, barTime: Time, ctx: RtCtx): voi
 function applyServerCandle(live: LiveCandleData, ctx: RtCtx): void {
   const ts = toUnixSeconds(live.timestamp);
   if (Number.isNaN(ts) || ts <= 0 || !ctx.lastCandle.current) return;
+  if (
+    !Number.isFinite(live.open) ||
+    !Number.isFinite(live.high) ||
+    !Number.isFinite(live.low) ||
+    !Number.isFinite(live.close) ||
+    live.open <= 0 ||
+    live.high <= 0 ||
+    live.low <= 0 ||
+    live.close <= 0
+  ) {
+    return;
+  }
+  if (
+    ctx.lastCandle.current.close > 0 &&
+    (live.close > ctx.lastCandle.current.close * 1.5 ||
+      live.close < ctx.lastCandle.current.close * 0.5)
+  ) {
+    return;
+  }
   if (ts - (ctx.lastCandle.current.time as number) > intervalSecOf(ctx.timeframe) * 1.5) {
     requestGapRefetch(ctx.gapAt, ctx.qc, ctx.symbol, ctx.timeframe);
   }
@@ -411,6 +431,11 @@ function buildTickBar(
   mid: number,
   ctx: RtCtx,
 ): CandlestickData<Time> | null {
+  if (!Number.isFinite(mid) || mid <= 0) return null;
+  // Guard against extreme price corruptions / mismatched symbol ticks
+  if (prev.close > 0 && (mid > prev.close * 1.5 || mid < prev.close * 0.5)) {
+    return null;
+  }
   if (isContinuation) {
     return {
       time: bucketTime,
@@ -454,7 +479,18 @@ function paintTickVolume(
 
 // Secondary: tick smoothing between server CandleUpdate pulses.
 function applyTick(tick: TickData, ctx: RtCtx): void {
-  if (!tick.timestamp) return;
+  if (
+    !tick ||
+    !tick.timestamp ||
+    typeof tick.bid !== "number" ||
+    typeof tick.ask !== "number" ||
+    tick.bid <= 0 ||
+    tick.ask <= 0 ||
+    !Number.isFinite(tick.bid) ||
+    !Number.isFinite(tick.ask)
+  ) {
+    return;
+  }
   const tickMs = toUnixMs(tick.timestamp);
   if (ctx.liveCandleTs.current && tickMs <= ctx.liveCandleTs.current) return;
   const prev = ctx.lastCandle.current;
@@ -516,7 +552,15 @@ function applyBidAskLines(
   ctx: RtCtx,
 ): void {
   const series = ctx.series;
-  if (!tick) {
+  if (
+    !tick ||
+    typeof tick.bid !== "number" ||
+    typeof tick.ask !== "number" ||
+    tick.bid <= 0 ||
+    tick.ask <= 0 ||
+    !Number.isFinite(tick.bid) ||
+    !Number.isFinite(tick.ask)
+  ) {
     removePriceLineSafe(ctx.bidLine, series);
     removePriceLineSafe(ctx.askLine, series);
     removePriceLineSafe(ctx.midLine, series);
@@ -590,7 +634,20 @@ function attachPlugins(
 
 function liveBarFrom(live: LiveCandleData): CandlestickData<Time> | null {
   const ts = toUnixSeconds(live.timestamp);
-  if (Number.isNaN(ts) || ts <= 0) return null;
+  if (
+    Number.isNaN(ts) ||
+    ts <= 0 ||
+    !Number.isFinite(live.open) ||
+    !Number.isFinite(live.high) ||
+    !Number.isFinite(live.low) ||
+    !Number.isFinite(live.close) ||
+    live.open <= 0 ||
+    live.high <= 0 ||
+    live.low <= 0 ||
+    live.close <= 0
+  ) {
+    return null;
+  }
   return { time: ts as Time, open: live.open, high: live.high, low: live.low, close: live.close };
 }
 
@@ -605,7 +662,13 @@ function legendFromSeries(
 }
 
 function scrollOrFit(chart: IChartApi | null, barCount: number): void {
-  const ts = chart?.timeScale();
+  if (!chart) return;
+  try {
+    chart.priceScale("right").applyOptions({ autoScale: true });
+  } catch {
+    /* safe ignore */
+  }
+  const ts = chart.timeScale();
   if (!ts) return;
   if (barCount > 150) ts.scrollToPosition(8, false);
   else ts.fitContent();
@@ -1258,7 +1321,7 @@ export function ChartPanel({
     const offsetSec = ((TF_INTERVAL_MS[timeframe] ?? 60_000) / 1000) * 5;
     onAddDrawing({
       ...d,
-      id: crypto.randomUUID(),
+      id: uuid(),
       time: d.time != null ? d.time + offsetSec : undefined,
       time2: d.time2 != null ? d.time2 + offsetSec : undefined,
     });
@@ -1374,7 +1437,7 @@ export function ChartPanel({
     (price: number) => {
       const rounded = parseFloat(price.toFixed(pipDigits));
       onAddDrawing({
-        id: crypto.randomUUID(),
+        id: uuid(),
         type: "horizontal",
         price: rounded,
         color: "#f0b90b",
@@ -1799,6 +1862,11 @@ export function ChartPanel({
     const buffered = latestLiveCandleRef.current;
     if (!isNewChart) {
       // Periodic refetch — preserve viewport, re-apply latest live data.
+      try {
+        chartRef.current?.priceScale("right").applyOptions({ autoScale: true });
+      } catch {
+        /* safe ignore */
+      }
       reapplyLive(buffered, ctx);
       return;
     }
@@ -2118,7 +2186,19 @@ function useChartData(candles: Candle[], colors: { volumeUp: string; volumeDown:
   return useMemo(() => {
     const sorted = candles
       .map(toCandleRow)
-      .filter((c) => !Number.isNaN(c.time as number) && (c.time as number) > 0)
+      .filter(
+        (c) =>
+          !Number.isNaN(c.time as number) &&
+          (c.time as number) > 0 &&
+          Number.isFinite(c.open) &&
+          Number.isFinite(c.high) &&
+          Number.isFinite(c.low) &&
+          Number.isFinite(c.close) &&
+          c.open > 0 &&
+          c.high > 0 &&
+          c.low > 0 &&
+          c.close > 0,
+      )
       .sort((a, b) => (a.time as number) - (b.time as number));
     const deduped = dedupeByTime(sorted);
 

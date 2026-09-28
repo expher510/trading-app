@@ -222,7 +222,7 @@ export function AdminPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشلت الموافقة على السحب");
 
-      toast.success("تم اعتماد السحب", `تم خصم ${data.amount} USDT وتحديث حالة الطلب`);
+      toast.success("تم اعتماد السحب", `تم تأكيد تحويل ${data.amount} USDT وتحديث حالة الطلب إلى مكتمل`);
       setApprovingWithdrawalId(null);
       fetchAllData();
     } catch (err: any) {
@@ -252,7 +252,7 @@ export function AdminPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "فشل رفض السحب");
 
-      toast.info("تم الرفض", "تم تحديث حالة الطلب كمرفوض وتوثيق السبب");
+      toast.info("تم الرفض واسترجاع الرصيد", "تم رفض الطلب وإرجاع المبلغ المخصوم إلى رصيد المستخدم تلقائياً");
       setRejectingWithdrawalId(null);
       setRejectReason("");
       fetchAllData();

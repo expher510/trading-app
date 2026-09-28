@@ -141,6 +141,22 @@ userRouter.post("/link-telegram", (req, res) => {
 });
 
 /**
+ * GET /api/user/:userId
+ * Retrieves user profile details and fresh balance
+ */
+userRouter.get("/:userId", (req, res) => {
+  try {
+    const user = getUserById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ status: "error", message: "المستخدم غير موجود." });
+    }
+    return res.json({ status: "success", user });
+  } catch (err: any) {
+    return res.status(500).json({ status: "error", message: err.message });
+  }
+});
+
+/**
  * GET /api/user/:userId/deposits
  * Retrieves all deposit history records for the user
  */
@@ -155,7 +171,7 @@ userRouter.get("/:userId/deposits", (req, res) => {
 
 /**
  * POST /api/user/refund-request
- * Submits a refund / withdrawal request for the user
+ * Submits a refund / withdrawal request for the user and immediately deducts balance
  */
 userRouter.post("/refund-request", (req, res) => {
   try {
@@ -167,7 +183,7 @@ userRouter.post("/refund-request", (req, res) => {
       });
     }
 
-    const request = createRefundRequest({
+    const { request, updatedUser } = createRefundRequest({
       userId: user_id,
       amount: Number(amount),
       walletAddress: String(wallet_address),
@@ -177,10 +193,11 @@ userRouter.post("/refund-request", (req, res) => {
 
     return res.json({
       status: "success",
-      message: "تم تسجيل طلب استرداد الأموال بنجاح! سيتم مراجعته وتحويل المبلغ لمحفظتك.",
+      message: "تم تسجيل طلب السحب وخصم المبلغ من رصيدك بنجاح! سيتم مراجعته وتحويل المبلغ لمحفظتك.",
       request,
+      user: updatedUser,
     });
   } catch (err: any) {
-    return res.status(500).json({ status: "error", message: err.message });
+    return res.status(400).json({ status: "error", message: err.message });
   }
 });

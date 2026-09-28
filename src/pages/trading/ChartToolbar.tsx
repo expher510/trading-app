@@ -400,11 +400,11 @@ export function ChartToolbar({
 
       <div className="flex-1 hidden md:block" />
 
-      {/* User Account / Login Button */}
+      {/* User Account / Login Button (Desktop) */}
       <button
         type="button"
         onClick={() => (user ? setIsProfileModalOpen(true) : setIsAuthModalOpen(true))}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-secondary/80 hover:bg-secondary text-neutral-300 hover:text-white font-medium text-xs border border-border transition-all active:scale-95"
+        className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded bg-secondary/80 hover:bg-secondary text-neutral-300 hover:text-white font-medium text-xs border border-border transition-all active:scale-95 shrink-0"
       >
         <User className="h-3.5 w-3.5 text-primary" />
         {user ? (
@@ -414,8 +414,8 @@ export function ChartToolbar({
         )}
       </button>
 
-      {/* Wallet Balance Badge */}
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-xs font-mono font-bold text-emerald-400 shadow-inner">
+      {/* Wallet Balance Badge (Desktop) */}
+      <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded bg-neutral-900 border border-neutral-800 text-xs font-mono font-bold text-emerald-400 shadow-inner shrink-0">
         <span className="text-[10px] text-neutral-400 font-sans font-normal">الرصيد:</span>
         <span>${formatNumber(liveBalance, 2)}</span>
         {liveEquity !== liveBalance && (
@@ -430,12 +430,12 @@ export function ChartToolbar({
         )}
       </div>
 
-      {/* Deposit Button */}
+      {/* Deposit Button (Desktop) */}
       {onOpenDeposit && (
         <button
           type="button"
           onClick={onOpenDeposit}
-          className="flex items-center gap-1.5 px-3 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-semibold text-xs border border-emerald-500/30 transition-all shadow-sm active:scale-95"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-semibold text-xs border border-emerald-500/30 transition-all shadow-sm active:scale-95 shrink-0"
         >
           <CreditCard className="h-3.5 w-3.5" />
           إيداع / Deposit

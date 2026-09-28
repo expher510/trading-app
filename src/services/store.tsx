@@ -387,6 +387,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   },
 
   updateTick: (symbolName, bid, ask, timestamp) => {
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) return;
     // 1. Check pending buffer (same-frame dedup with timestamp awareness)
     const pending = _pendingTicks.get(symbolName);
     if (pending && pending.bid === bid && pending.ask === ask && pending.timestamp >= timestamp)
@@ -428,6 +429,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   },
 
   updateLiveTick: (symbolName, bid, ask, timestamp) => {
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) return;
     const pending = _pendingLiveTicks.get(symbolName);
     if (pending && pending.bid === bid && pending.ask === ask && pending.timestamp >= timestamp)
       return;
@@ -464,6 +466,19 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   },
 
   updateCandleFromWs: (symbol, timeframe, bar) => {
+    if (
+      !bar ||
+      !Number.isFinite(bar.open) ||
+      !Number.isFinite(bar.high) ||
+      !Number.isFinite(bar.low) ||
+      !Number.isFinite(bar.close) ||
+      bar.open <= 0 ||
+      bar.high <= 0 ||
+      bar.low <= 0 ||
+      bar.close <= 0
+    ) {
+      return;
+    }
     const key = `${symbol}:${timeframe}`;
     set((state) => ({
       liveCandleUpdates: { ...state.liveCandleUpdates, [key]: bar },

@@ -34,9 +34,23 @@ function getSymbolVolatility(symbol: string, basePrice: number): number {
   return Math.max(0.00003, basePrice * 0.00003);
 }
 
+function defaultSeedPrice(symbol: string): number {
+  if (symbol.startsWith("EUR")) return 1.135;
+  if (symbol.startsWith("GBP")) return 1.305;
+  if (symbol.includes("JPY")) return 155.0;
+  if (symbol.startsWith("XAU")) return 2700.0;
+  if (symbol.startsWith("BTC")) return 65000.0;
+  if (symbol.startsWith("ETH")) return 2500.0;
+  if (symbol.startsWith("SOL")) return 150.0;
+  if (symbol.startsWith("BNB")) return 580.0;
+  if (symbol.startsWith("XRP")) return 0.55;
+  if (symbol.startsWith("ADA")) return 0.35;
+  return 100;
+}
+
 function buildCursors(): SymbolCursor[] {
   return DEMO_SYMBOLS.map((s) => {
-    const seed = getSeedPrice(s.name) || 100;
+    const seed = getSeedPrice(s.name) || defaultSeedPrice(s.name);
     const spread = Math.max(s.tickSize, seed * 0.0001);
     const volatility = getSymbolVolatility(s.name, seed);
     return {
@@ -70,17 +84,58 @@ function emitTick(cursor: SymbolCursor): void {
   mark(cursor.symbol, price);
 }
 
+let liveSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+async function syncLiveTicks(): Promise<void> {
+  try {
+    const res = await fetch("/api/market-data/ticks");
+    if (!res.ok) return;
+    const ticks = await res.json();
+    for (const [sym, t] of Object.entries(ticks as Record<string, any>)) {
+      if (t && t.bid > 0) {
+        const cursor = cursors.find((c) => c.symbol === sym);
+        const mid = (t.bid + t.ask) / 2;
+        if (cursor) {
+          cursor.basePrice = mid;
+          cursor.currentPrice = mid;
+          cursor.spread = Math.abs(t.ask - t.bid) || cursor.spread;
+        }
+        publish("market-data", {
+          eventType: "MarketTick",
+          symbol: sym,
+          bid: t.bid,
+          ask: t.ask,
+          occurredAt: Date.now(),
+        });
+        mark(sym, mid);
+      }
+    }
+  } catch {
+    // Gentle fallback
+  }
+}
+
 export function startDemoFeed(): void {
   if (timer) return;
   cursors = buildCursors();
   // Seed initial price for every symbol immediately
   for (const c of cursors) emitTick(c);
+  // Fetch real live ticks right away
+  syncLiveTicks();
+
   timer = setInterval(() => {
     for (const c of cursors) emitTick(c);
   }, TICK_MS);
+
+  // Poll live MT5 & Binance ticks every 1000ms
+  liveSyncTimer = setInterval(() => {
+    syncLiveTicks();
+  }, 1000);
 }
 
 export function stopDemoFeed(): void {
   if (timer) clearInterval(timer);
+  if (liveSyncTimer) clearInterval(liveSyncTimer);
   timer = null;
+  liveSyncTimer = null;
 }

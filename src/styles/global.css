@@ -304,12 +304,12 @@
   touch-action: pan-y;
 }
 
-/* Larger touch targets on mobile */
+/* Larger touch targets on mobile (excluding compact inline buttons) */
 @media (max-width: 767px) {
-  button,
-  [role="button"],
-  a {
-    min-height: 36px;
+  button:not([data-compact]),
+  [role="button"]:not([data-compact]),
+  a:not([data-compact]) {
+    min-height: 32px;
   }
 
   /* Disable hover effects on touch */

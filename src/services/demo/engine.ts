@@ -1,6 +1,7 @@
 import type { Account, ClosedPosition, Fill, Order, Position } from "../schemas.ts";
 import { publish } from "./bus.ts";
 import { getDemoSymbol } from "./instruments.ts";
+import { uuid } from "../../lib/uuid.ts";
 
 /**
  * In-browser paper-trading engine with full persistence (localStorage).
@@ -27,7 +28,7 @@ function saveState(key: string, value: any): void {
 
 const savedAccount = loadState<Partial<Account>>("trading_account_state", {});
 const account: Account = {
-  id: savedAccount.id || crypto.randomUUID(),
+  id: savedAccount.id || uuid(),
   userId: savedAccount.userId || "live-user",
   templateId: "live",
   label: "Live Trading Account",
@@ -114,7 +115,7 @@ function emitEquity(): void {
 function openPosition(symbol: string, side: string, qty: number, price: number, tp?: number, sl?: number): Position {
   const isLong = side === "BUY";
   const pos: Position = {
-    id: crypto.randomUUID(),
+    id: uuid(),
     accountId: account.id,
     symbolName: symbol,
     side: isLong ? "LONG" : "SHORT",
@@ -137,7 +138,7 @@ function openPosition(symbol: string, side: string, qty: number, price: number, 
 function makeFilledOrder(input: PlaceOrderArgs, price: number): Order {
   const now = new Date().toISOString();
   return {
-    id: crypto.randomUUID(),
+    id: uuid(),
     accountId: account.id,
     symbolName: input.symbol,
     side: input.side === "BUY" ? "BUY" : "SELL",
@@ -198,7 +199,7 @@ export function placeOrder(input: PlaceOrderArgs): Order {
 function recordClose(pos: Position, qty: number, exitPrice: number, realized: number): void {
   const now = new Date().toISOString();
   closed.unshift({
-    id: crypto.randomUUID(),
+    id: uuid(),
     accountId: account.id,
     symbolName: pos.symbolName,
     side: pos.side,
@@ -215,7 +216,7 @@ function recordClose(pos: Position, qty: number, exitPrice: number, realized: nu
   saveState("trading_closed_positions_state", closed);
 
   fills.unshift({
-    id: crypto.randomUUID(),
+    id: uuid(),
     orderId: pos.id,
     accountId: account.id,
     symbolName: pos.symbolName,

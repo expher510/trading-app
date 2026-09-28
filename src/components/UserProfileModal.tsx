@@ -71,6 +71,17 @@ export function UserProfileModal({ isOpen, onClose, onOpenDeposit }: UserProfile
 
   useEffect(() => {
     if (isOpen && user?.id) {
+      // 1. Sync latest fresh user balance from DB
+      fetch(`/api/user/${user.id}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.status === "success" && data.user) {
+            useAuthStore.getState().setUser(data.user);
+          }
+        })
+        .catch(() => {});
+
+      // 2. Load deposits history
       setLoadingDeposits(true);
       fetch(`/api/user/${user.id}/deposits`)
         .then((r) => r.json())
@@ -170,9 +181,20 @@ export function UserProfileModal({ isOpen, onClose, onOpenDeposit }: UserProfile
 
       const data = await res.json();
 
+      if (!res.ok || data.status !== "success") {
+        throw new Error(data.message || "تعذر تسجيل طلب السحب.");
+      }
+
+      // Update user state and balance immediately across all app stores
+      if (data.user) {
+        useAuthStore.getState().setUser(data.user);
+      } else {
+        const newBalance = Math.max(0, liveBalance - amountNum);
+        useAuthStore.getState().updateUserBalance(newBalance);
+      }
+
       // 2. Prepare Direct Telegram Message to @AliSaad555
       const nowStr = new Date().toLocaleString("ar-EG");
-      const remainingBalance = Math.max(0, liveBalance - amountNum);
       const tgMessage =
         `🔔 *طلب سحب / استرداد أموال جديد*\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -181,7 +203,7 @@ export function UserProfileModal({ isOpen, onClose, onOpenDeposit }: UserProfile
         `📱 *تليجرام ID:* ${user.telegram_id || "غير مسجل"}\n` +
         `🆔 *معرف الحساب:* \`${user.id}\`\n` +
         `💰 *المبلغ المطلوب سحبه:* *${amountNum.toFixed(2)} USDT*\n` +
-        `💼 *الرصيد الكلي في الحساب:* $${liveBalance.toFixed(2)} USDT\n` +
+        `💼 *الرصيد المتبقي في الحساب:* $${((data.user?.balance ?? (liveBalance - amountNum))).toFixed(2)} USDT\n` +
         `🏦 *محفظة الاستلام:* \`${refundAddress.trim()}\` (شبكة TRC20)\n` +
         `📝 *ملاحظات:* ${refundReason.trim() || "طلب سحب رصيد"}\n` +
         `⏰ *الوقت:* ${nowStr}\n` +
@@ -199,20 +221,20 @@ export function UserProfileModal({ isOpen, onClose, onOpenDeposit }: UserProfile
         window.open(directTgUrl, "_blank");
       }
 
-      setRefundSuccess(`تم تسجيل طلب سحب $${amountNum.toFixed(2)} USDT بنجاح وجاري فتح محادثة Telegram مع @AliSaad555! 🎉`);
+      setRefundSuccess(`تم تسجيل طلب سحب $${amountNum.toFixed(2)} USDT وخصم المبلغ من رصيدك فورياً بنجاح! جاري فتح Telegram للتواصل مع الإدارة.`);
       setRefundAmount("");
       setRefundAddress("");
       setRefundReason("");
     } catch (err: any) {
-      setRefundError("تعذر الاتصال بالسيرفر: " + (err?.message || "خطأ"));
+      setRefundError(err?.message || "تعذر الاتصال بالسيرفر");
     } finally {
       setRefundLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm dir-rtl">
-      <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-neutral-800 bg-[#121212] shadow-2xl text-white flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3 sm:p-4 backdrop-blur-sm dir-rtl">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-neutral-800 bg-[#121212] shadow-2xl text-white flex flex-col max-h-[92vh]">
         {/* Header Profile Bar */}
         <div className="flex items-center justify-between border-b border-neutral-800 p-5 bg-neutral-900/50">
           <div className="flex items-center gap-3">

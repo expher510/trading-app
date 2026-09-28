@@ -237,12 +237,16 @@ export function TradingPage() {
       .getTick(selectedSymbol)
       .then((tick) => {
         if (cancelled || !tick) return;
-        updateTick(
-          selectedSymbol,
-          Number(tick.bid),
-          Number(tick.ask),
-          typeof tick.timestamp === "number" ? tick.timestamp : Date.now(),
-        );
+        const bid = Number(tick.bid);
+        const ask = Number(tick.ask);
+        if (bid > 0 && ask > 0 && Number.isFinite(bid) && Number.isFinite(ask)) {
+          updateTick(
+            selectedSymbol,
+            bid,
+            ask,
+            typeof tick.timestamp === "number" ? tick.timestamp : Date.now(),
+          );
+        }
       })
       .catch(() => {
         // Ignore snapshot misses; WS stream remains authoritative.
@@ -324,26 +328,27 @@ export function TradingPage() {
   }, []);
 
   // Deep-history target used after the initial fast render completes.
+  // Clamped to 1,000 bars max so MT5 and Binance queries finish in <500ms without timing out.
   const deepCandleLimit = useMemo(() => {
     switch (timeframe) {
       case "1m":
-        return 3_000;
+        return 1_000;
       case "5m":
-        return 5_000;
+        return 1_000;
       case "15m":
-        return 12_000;
+        return 1_000;
       case "30m":
-        return 8_000;
+        return 1_000;
       case "1h":
-        return 8_760;
+        return 1_000;
       case "4h":
-        return 2_500;
+        return 1_000;
       case "1d":
         return 1_000;
       case "1w":
         return 520;
       default:
-        return 5_000;
+        return 1_000;
     }
   }, [timeframe]);
   // First paint: viewport-sized so the initial fetch is as small as possible.
@@ -420,6 +425,7 @@ export function TradingPage() {
           equity={account?.equity ?? account?.balance ?? 0}
           margin={account?.margin ?? 0}
           pnl={positionPnl}
+          onOpenDeposit={() => setIsDepositOpen(true)}
         />
       </div>
 
@@ -463,8 +469,6 @@ export function TradingPage() {
         }
         onOpenDeposit={() => setIsDepositOpen(true)}
       />
-
-      <MarketClosedBanner symbolInfo={symbolInfo} />
 
       {/* ── Main Layout ──────────────────────────────────── */}
       <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
@@ -650,6 +654,11 @@ export function TradingPage() {
               bid={tick?.bid}
               ask={tick?.ask}
               positions={positions || []}
+              accountBalance={account?.balance ?? 0}
+              onOpenDeposit={() => {
+                setMobilePanelOpen(false);
+                setIsDepositOpen(true);
+              }}
               onPlaceOrder={(order) => {
                 if (oneClick) {
                   api

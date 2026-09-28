@@ -1,5 +1,5 @@
 // Chart templates persist to localStorage in demo mode (no backend).
-
+import { uuid } from "../../lib/uuid.ts";
 export interface ChartTemplateContent {
   version: 1;
   /** Snapshot of the TEMPLATE_PREF_KEYS subset of ChartPreferences. */
@@ -37,7 +37,7 @@ export const chartTemplatesApi = {
   save: (name: string, content: ChartTemplateContent, isDefault = false) => {
     const list = readAll().filter((t) => t.name !== name);
     const template: ChartTemplate = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       name,
       layoutType: "SINGLE",
       isDefault,

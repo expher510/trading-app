@@ -113,61 +113,7 @@ interface Props {
   symbolInfo: Symbol | undefined;
 }
 
-export function MarketClosedBanner({ symbolInfo }: Props) {
-  const [now, setNow] = useState(() => new Date());
-  const [mountedAt] = useState(() => Date.now());
-  const ticks = useTradingStore((s) => s.ticks);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!symbolInfo) return null;
-
-  const category: string = symbolInfo.category ?? "";
-  if (category.toUpperCase() === "CRYPTO") return null;
-
-  // If the feed is actively delivering ticks for this symbol, the market is open.
-  const symbolTick = ticks[symbolInfo.name ?? ""];
-  if (symbolTick && Date.now() - symbolTick.timestamp < LIVE_TICK_GRACE_MS) return null;
-
-  // No tick yet — give the WebSocket connection time to deliver the first tick
-  // before falling back to schedule-based logic. Prevents a false "closed"
-  // flash on page load and after tab resume.
-  if (!symbolTick && Date.now() - mountedAt < STARTUP_HOLDOFF_MS) return null;
-
-  const tradingHours = ((symbolInfo as Record<string, unknown>).tradingHours ??
-    []) as TradingHours[];
-  const tz: string =
-    ((symbolInfo as Record<string, unknown>).sessionTimezone as string | undefined) ?? "UTC";
-
-  const isOpen =
-    tradingHours.length > 0 ? isInWindow(tradingHours, tz, now) : isForexDefaultOpen(now);
-
-  if (isOpen) return null;
-
-  const msUntilOpen = msUntilNextOpen(tradingHours, tz, category, now);
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center justify-center gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-medium"
-    >
-      <Clock className="h-3 w-3 shrink-0" />
-      <span>
-        Market closed
-        {msUntilOpen != null && (
-          <>
-            {" "}
-            · Opens in{" "}
-            <span className="font-mono tabular-nums">
-              {formatCountdown(msUntilOpen - (new Date().getTime() - now.getTime()))}
-            </span>
-          </>
-        )}
-      </span>
-    </div>
-  );
+export function MarketClosedBanner({ symbolInfo: _symbolInfo }: Props) {
+  // Disabled to prevent unwanted UI layout shift / jitter
+  return null;
 }

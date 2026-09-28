@@ -247,19 +247,60 @@ export function createRefundRequest(params: {
   network?: string;
   reason?: string;
 }) {
-  const refundId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO refund_requests (id, user_id, amount, wallet_address, network, reason, status)
-    VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
-  `).run(
-    refundId,
-    params.userId,
-    params.amount,
-    params.walletAddress.trim(),
-    params.network || "TRX",
-    params.reason || "طلب استرداد رصيد من لوحة التحكم"
-  );
-  return db.prepare("SELECT * FROM refund_requests WHERE id = ?").get(refundId) as any;
+  const amount = Number(params.amount);
+  if (isNaN(amount) || amount <= 0) {
+    throw new Error("المبلغ المطلوب غير صالح.");
+  }
+
+  const tx = db.transaction(() => {
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(params.userId) as any;
+    if (!user) {
+      throw new Error("المستخدم غير موجود.");
+    }
+
+    if (user.balance < amount) {
+      throw new Error(`رصيد الحساب غير كافٍ. رصيدك الحالي: $${user.balance.toFixed(2)} USDT.`);
+    }
+
+    // 1. Deduct amount from user balance immediately
+    db.prepare(`
+      UPDATE users
+      SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(amount, params.userId);
+
+    // 2. Insert into refund_requests
+    const refundId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO refund_requests (id, user_id, amount, wallet_address, network, reason, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
+    `).run(
+      refundId,
+      params.userId,
+      amount,
+      params.walletAddress.trim(),
+      params.network || "TRX",
+      params.reason || "طلب استرداد رصيد من لوحة التحكم"
+    );
+
+    // 3. Insert audit log
+    const logId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO admin_logs (id, action, target_user_id, details)
+      VALUES (?, 'REQUEST_WITHDRAWAL', ?, ?)
+    `).run(
+      logId,
+      params.userId,
+      `تم طلب سحب مبلغ ${amount} USDT إلى المحفظة ${params.walletAddress.trim()} وتم خصم الرصيد تلقائياً`
+    );
+
+    const updatedUser = getUserById(params.userId);
+    const request = db.prepare("SELECT * FROM refund_requests WHERE id = ?").get(refundId) as any;
+
+    return { request, updatedUser };
+  });
+
+  return tx();
 }
 
 // ── 6-Digit Link Code Generation (for Telegram-to-Web linking) ──
@@ -352,28 +393,22 @@ export function approveWithdrawal(requestId: string, adminNote?: string) {
     if (!req) throw new Error("طلب السحب غير موجود.");
     if (req.status !== "PENDING") throw new Error("هذا الطلب تمت معالجته مسبقاً.");
 
-    // Update request status to APPROVED
+    // Update request status to APPROVED (balance was already deducted when request was created)
     db.prepare(`
       UPDATE refund_requests
       SET status = 'APPROVED', reason = COALESCE(?, reason)
       WHERE id = ?
     `).run(adminNote || "تم اعتماد السحب والتحويل", requestId);
 
-    // Deduct amount from user balance
-    db.prepare(`
-      UPDATE users
-      SET balance = MAX(0, balance - ?), updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(req.amount, req.user_id);
-
     // Log admin action
     const logId = crypto.randomUUID();
     db.prepare(`
       INSERT INTO admin_logs (id, action, target_user_id, details)
       VALUES (?, 'APPROVE_WITHDRAWAL', ?, ?)
-    `).run(logId, req.user_id, `تمت الموافقة على سحب مبلغ ${req.amount} USDT للمحفظة ${req.wallet_address}`);
+    `).run(logId, req.user_id, `تمت الموافقة على سحب مبلغ ${req.amount} USDT وتأكيد التحويل للمحفظة ${req.wallet_address}`);
 
-    return { success: true, amount: req.amount, userId: req.user_id };
+    const updatedUser = getUserById(req.user_id);
+    return { success: true, amount: req.amount, userId: req.user_id, user: updatedUser };
   });
 
   return tx();
@@ -385,19 +420,28 @@ export function rejectWithdrawal(requestId: string, rejectReason: string) {
     if (!req) throw new Error("طلب السحب غير موجود.");
     if (req.status !== "PENDING") throw new Error("هذا الطلب تمت معالجته مسبقاً.");
 
+    // Update request status to REJECTED
     db.prepare(`
       UPDATE refund_requests
       SET status = 'REJECTED', reason = ?
       WHERE id = ?
     `).run(rejectReason || "تم رفض طلب السحب من الإدارة", requestId);
 
+    // Refund / restore deducted amount back to user's balance
+    db.prepare(`
+      UPDATE users
+      SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(req.amount, req.user_id);
+
     const logId = crypto.randomUUID();
     db.prepare(`
       INSERT INTO admin_logs (id, action, target_user_id, details)
       VALUES (?, 'REJECT_WITHDRAWAL', ?, ?)
-    `).run(logId, req.user_id, `تم رفض سحب مبلغ ${req.amount} USDT. السبب: ${rejectReason}`);
+    `).run(logId, req.user_id, `تم رفض سحب مبلغ ${req.amount} USDT وإعادة الرصيد إلى الحساب. السبب: ${rejectReason}`);
 
-    return { success: true, requestId };
+    const updatedUser = getUserById(req.user_id);
+    return { success: true, requestId, refundedAmount: req.amount, userId: req.user_id, user: updatedUser };
   });
 
   return tx();

@@ -257,3 +257,4 @@ The chart engine and several plugins build on TradingView's open-source
 ## License
 
 See [LICENSE](LICENSE).
+"# trading-app" 

@@ -1,4 +1,5 @@
 import type { IChartApi, ISeriesApi, SeriesType } from "lightweight-charts";
+import { uuid } from "../../uuid.ts";
 import type {
   DrawingLine,
   DrawingTool,
@@ -304,7 +305,7 @@ export class DrawingToolsManager {
       return this.makePosition(tool === "long-position" ? "long" : "short", p1, p2);
     }
     const base = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       color: tool === "trendline" ? "#2196F3" : "#f0b90b",
       createdTf: this.timeframe,
     };
@@ -331,7 +332,7 @@ export class DrawingToolsManager {
     const entry = p1.price;
     const target = p2.price;
     return {
-      id: crypto.randomUUID(),
+      id: uuid(),
       type: "position",
       side,
       color: side === "long" ? "#089981" : "#f23645",
@@ -389,7 +390,15 @@ export class DrawingToolsManager {
     const pos = this.eventPos(e);
     if (!pos) return;
     const hit = hitTest(this.resolveAll(), pos);
-    if (!hit) return;
+    if (!hit) {
+      try {
+        this.chart.priceScale("right").applyOptions({ autoScale: true });
+        this.chart.timeScale().scrollToPosition(8, false);
+      } catch {
+        /* safe ignore */
+      }
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     this.select([hit.id]);
@@ -571,7 +580,7 @@ export class DrawingToolsManager {
   private offsetCopy(d: DrawingLine, dt: number): DrawingLine {
     return {
       ...d,
-      id: crypto.randomUUID(),
+      id: uuid(),
       time: d.time != null ? d.time + dt : undefined,
       time2: d.time2 != null ? d.time2 + dt : undefined,
       time3: d.time3 != null ? d.time3 + dt : undefined,

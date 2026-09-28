@@ -5,8 +5,10 @@
  * lot sizes for one-tap order placement.
  */
 import { useState, useRef, useCallback } from "react";
+import { CreditCard, LogIn, User, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useInstrumentLabels } from "../hooks/useInstrumentLabels.ts";
+import { useAuthStore } from "../services/auth.ts";
 
 interface MobilePosition {
   id: string;
@@ -43,6 +45,7 @@ interface MobileTradingPanelProps {
   closingPositionId?: string | null;
   /** True while close-all is in flight — disables the Close All button */
   closingAll?: boolean;
+  onOpenDeposit?: () => void;
 }
 
 type Tab = "order" | "positions" | "alerts";
@@ -62,6 +65,7 @@ export function MobileTradingPanel({
   onCloseAllPositions,
   closingPositionId = null,
   closingAll = false,
+  onOpenDeposit,
 }: MobileTradingPanelProps) {
   const { formatQty } = useInstrumentLabels();
   const spread = spreadProp ?? ask - bid;
@@ -267,12 +271,22 @@ export function MobileTradingPanel({
             </button>
           </div>
 
-          {/* Account info */}
-          <div className="flex justify-between text-xs text-slate-500 pt-1">
-            <span>
-              Balance: ${accountBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          {/* Account info + Deposit Shortcut */}
+          <div className="flex justify-between items-center text-xs text-slate-400 pt-1.5 border-t border-slate-800">
+            <span className="font-mono">
+              الرصيد: <strong className="text-emerald-400">${accountBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </span>
-            <span>Open: {openPositionCount} pos</span>
+            {onOpenDeposit && (
+              <button
+                type="button"
+                onClick={onOpenDeposit}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 text-[11px] font-bold active:scale-95 transition-all"
+              >
+                <CreditCard className="h-3 w-3" />
+                إيداع
+              </button>
+            )}
+            <span>الصفقات: {openPositionCount}</span>
           </div>
         </div>
       )}
@@ -395,53 +409,76 @@ export function MobileTradingPanel({
 }
 
 /**
- * Mobile-optimized account summary strip shown at top of trading page.
+ * Mobile-optimized account summary and actions strip shown at top of trading page (<768px).
+ * Provides direct 1-tap access to Login/User Profile, Live Balance/Equity, and Deposit.
  */
 export function MobileAccountBar({
   balance,
   equity,
-  margin,
+  margin: _margin,
   pnl,
+  onOpenDeposit,
 }: {
   balance: number;
   equity: number;
   margin: number;
   pnl: number;
+  onOpenDeposit?: () => void;
 }) {
+  const { user, setIsAuthModalOpen, setIsProfileModalOpen } = useAuthStore();
+
   return (
-    <div className="md:hidden flex items-center gap-2 px-2 py-1 bg-slate-800/80 border-b border-slate-700 overflow-x-auto no-scrollbar">
-      <div className="shrink-0">
-        <div className="text-[9px] text-slate-500 uppercase">Bal</div>
-        <div className="text-[11px] font-mono font-bold text-white">
-          ${balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+    <div className="md:hidden flex items-center justify-between gap-1.5 px-2.5 py-1.5 bg-[#0e1118]/95 backdrop-blur-md border-b border-neutral-800 text-xs shadow-md select-none">
+      {/* 1. Login / Account Profile button */}
+      <button
+        type="button"
+        onClick={() => (user ? setIsProfileModalOpen(true) : setIsAuthModalOpen(true))}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-900/90 hover:bg-neutral-800 active:scale-95 border border-neutral-700/60 text-white font-medium text-xs transition-all shadow-sm shrink-0 max-w-[130px]"
+      >
+        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
+          <User className="h-3 w-3" />
         </div>
-      </div>
-      <div className="w-px h-5 bg-slate-700 shrink-0" />
-      <div className="shrink-0">
-        <div className="text-[9px] text-slate-500 uppercase">Equity</div>
-        <div className="text-[11px] font-mono font-bold text-white">
-          ${equity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-        </div>
-      </div>
-      <div className="w-px h-5 bg-slate-700 shrink-0" />
-      <div className="shrink-0">
-        <div className="text-[9px] text-slate-500 uppercase">Margin</div>
-        <div className="text-[11px] font-mono font-bold text-slate-300">
-          ${margin.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-        </div>
-      </div>
-      <div className="w-px h-5 bg-slate-700 shrink-0" />
-      <div className="shrink-0">
-        <div className="text-[9px] text-slate-500 uppercase">P&L</div>
-        <div
-          className={cn(
-            "text-[11px] font-mono font-bold",
-            pnl >= 0 ? "text-emerald-400" : "text-red-400",
+        <span className="truncate text-[11px] font-semibold">
+          {user
+            ? user.first_name || user.username || (user.email ? user.email.split("@")[0] : "حسابي")
+            : "تسجيل الدخول"}
+        </span>
+      </button>
+
+      {/* 2. Balance & Live Status */}
+      <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-neutral-950/90 border border-neutral-800/80 shadow-inner shrink-0">
+        <div className="flex flex-col items-center leading-tight">
+          <div className="flex items-center gap-1 font-mono font-bold text-emerald-400 text-[11px] sm:text-xs">
+            <span className="text-[9px] text-neutral-400 font-sans font-normal">الرصيد:</span>
+            <span>${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          {equity !== balance && (
+            <div className="flex items-center gap-1 text-[9px] font-mono">
+              <span className="text-neutral-400">Equity:</span>
+              <span className={equity >= balance ? "text-emerald-400" : "text-rose-400"}>
+                ${equity.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              </span>
+              {pnl !== 0 && (
+                <span className={pnl >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                  ({pnl >= 0 ? "+" : ""}${pnl.toFixed(2)})
+                </span>
+              )}
+            </div>
           )}
-        >
-          {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
         </div>
       </div>
+
+      {/* 3. Deposit Button */}
+      {onOpenDeposit && (
+        <button
+          type="button"
+          onClick={onOpenDeposit}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-neutral-950 font-bold text-xs shadow-md shadow-emerald-500/20 border border-emerald-400/40 transition-all shrink-0"
+        >
+          <CreditCard className="h-3.5 w-3.5 shrink-0" />
+          <span>إيداع</span>
+        </button>
+      )}
     </div>
   );
 }
